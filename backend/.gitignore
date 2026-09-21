@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+# Python virtual environments
+venv/
+.venv/
+
+# Generated at runtime by the backend
+Databases/faiss_index/
+Databases/enrichment_cache.json
