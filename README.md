@@ -6,11 +6,13 @@
 
 **Predict • Understand • Prevent**
 
+🌐 **Live app:** [aura-lyart-ten.vercel.app](https://aura-lyart-ten.vercel.app/)
+
 A full-stack health companion that matches your symptoms against a Mayo Clinic–derived disease dataset using **semantic search**, then uses a **RAG pipeline with Google Gemini** to generate prevention tips, home remedies, a risk level, and a specialist recommendation.
 
 <br/>
 
-<a href="https://disease-predictor-tan.vercel.app/">
+<a href="https://aura-lyart-ten.vercel.app/">
   <img src="https://img.shields.io/badge/Live%20Demo-Visit%20AURA-111827?style=for-the-badge&logo=vercel&logoColor=white"/>
 </a>
 <a href="https://github.com/DristiLaskar/AURA">
@@ -384,6 +386,15 @@ git checkout -b feature/your-feature
 ```
 
 Make your changes, then open a pull request.
+
+---
+
+## Contributors
+
+| Name | GitHub |
+| --- | --- |
+| **Namrata Nayak** | [@TechNamrata](https://github.com/TechNamrata) |
+| **Dristi Laskar** | [@DristiLaskar](https://github.com/DristiLaskar) |
 
 ---
 
