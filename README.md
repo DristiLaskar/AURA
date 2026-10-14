@@ -42,9 +42,9 @@ A full-stack health companion that matches your symptoms against a Mayo Clinic�
 
 **AURA** turns a list of symptoms into structured, easy-to-read health information.
 
-1. **Match** – Your symptoms are compared against **1,167 conditions** using Google embeddings and a **FAISS** vector index (with a TF-IDF + cosine fallback that works offline).
-2. **Ground** – For each of the top 3 matches, the disease's own source text is retrieved from the dataset (**RAG**).
-3. **Enrich** – **Gemini 2.5 Flash**, via LangChain, uses that text to write prevention tips, safe home remedies, a risk level, and a recommended specialist.
+1. **Match** – Your symptoms are compared against **1,167 conditions** using the local Sentence Transformers model `sentence-transformers/all-MiniLM-L6-v2` and a **FAISS** vector index. If the local embedding dependencies cannot be imported or the embedding model cannot initialize, the backend uses TF-IDF + cosine similarity as a fallback.
+2. **Ground** – For each of the top 3 matches, the disease's cleaned reference text is retrieved from the dataset to provide context (**RAG**).
+3. **Enrich** – When a Gemini API key is configured, **Gemini 2.5 Flash**, via LangChain, uses that context to generate prevention tips, home-care suggestions, a risk label, and a specialist recommendation. Without a key, Gemini generation is skipped; default guidance is used when no cached guidance exists.
 4. **Present** – A React interface shows the results alongside an animated, cursor-aware **AURA assistant** drawn on HTML Canvas.
 
 > **Disclaimer:** AURA is for educational and informational purposes only. It is **not** a substitute for professional medical diagnosis, treatment, or emergency care. If you think you are having a medical emergency, contact your local emergency services.
@@ -53,16 +53,16 @@ A full-stack health companion that matches your symptoms against a Mayo Clinic�
 
 ## Features
 
-**Backend**
+### Backend
 
-- **Semantic symptom matching** – Google `embedding-001` + FAISS, so synonyms such as "high temperature" and "fever" match.
-- **Offline fallback** – Without an API key the backend still works, using cleaned TF-IDF + cosine similarity and generic guidance.
+- **Semantic symptom matching** – The local `sentence-transformers/all-MiniLM-L6-v2` model + FAISS retrieves disease descriptions with related meanings. The embedding model does not require a Gemini API key.
+- **TF-IDF fallback** – If the embedding/vector-store dependencies cannot be imported or the local embedding model cannot initialize, the backend falls back to cleaned TF-IDF + cosine similarity. Without a Gemini API key, semantic matching can still work; Gemini-generated enrichment is skipped and default guidance is used when no cached enrichment is available.
 - **Data cleaning** – Roughly 39% of the scraped rows contained page boilerplate (newsletter, privacy, and form-error text). It is stripped before anything is embedded.
 - **Grounded RAG enrichment** – Gemini is given the disease's own reference text instead of answering from the name alone.
-- **Persistent enrichment cache** – Generated guidance is saved to disk, so repeat lookups are instant and cost no extra API calls.
+- **Persistent enrichment cache** – Generated guidance is saved to disk, so repeat lookups can reuse cached results without extra API calls.
 - **API hardening** – Input validation, a per-IP rate limit (20 requests per 60 seconds), and configurable CORS origins.
 
-**Frontend**
+### Frontend
 
 - **Symptom chips** – Add symptoms by typing (Enter to add) or by tapping quick suggestions.
 - **Top 3 results** – Selectable cards, each with a risk badge (Mild, Moderate, or Severe).
@@ -80,18 +80,20 @@ A full-stack health companion that matches your symptoms against a Mayo Clinic�
 flowchart TD
     U[User enters symptoms] --> F[React + Vite frontend]
     F -->|POST /predict| A[FastAPI backend]
-    A --> S{Gemini key configured?}
-    S -->|Yes| E[Google embeddings + FAISS search]
-    S -->|No| T[TF-IDF + cosine fallback]
-    E --> R[Top 3 matching diseases]
+    A --> E[Local Sentence Transformers embeddings + FAISS]
+    E -->|Available| R[Top 3 matching diseases]
+    E -->|Unavailable| T[TF-IDF + cosine fallback]
     T --> R
     R --> G[Retrieve grounding text for each disease]
-    G --> L[Gemini 2.5 Flash via LangChain]
+    G --> K{Gemini API key configured?}
+    K -->|Yes| L[Gemini 2.5 Flash via LangChain]
+    K -->|No / generation fails| D[Default guidance]
     L --> J[Prevention, remedies, risk, specialist]
+    D --> J
     J --> F
 ```
 
-Without a `GEMINI_API_KEY`, the Gemini step is skipped and generic default guidance is returned for each match.
+The embedding model and FAISS search do **not** require a Gemini API key. Without `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), Gemini enrichment is skipped and default guidance is used for diseases that do not already have cached enrichment.
 
 ---
 
@@ -101,7 +103,7 @@ Without a `GEMINI_API_KEY`, the Gemini step is skipped and generic default guida
 | --- | --- |
 | **Frontend** | React 19 · TypeScript · Vite 7 · Tailwind CSS 4 · TanStack Router · Framer Motion · Radix UI · Zod · Lucide icons |
 | **Backend** | Python · FastAPI · Uvicorn · Pydantic · python-dotenv |
-| **Retrieval & ML** | Google embeddings (`embedding-001`) · FAISS · scikit-learn (TF-IDF fallback) · pandas |
+| **Retrieval & ML** | Sentence Transformers (`sentence-transformers/all-MiniLM-L6-v2`) · FAISS · scikit-learn (TF-IDF fallback) · pandas |
 | **Generative AI** | Google Gemini (`gemini-2.5-flash`) · LangChain |
 | **Deployment** | Vercel (frontend) · Render (backend) |
 
@@ -115,7 +117,7 @@ AURA/
 │
 ├── backend/
 │   ├── server.py              # FastAPI app: GET /, POST /predict, CORS, rate limiting
-│   ├── ml.py                  # Data cleaning, embeddings + FAISS search, TF-IDF fallback, RAG retriever
+│   ├── ml.py                  # Data cleaning, local Sentence Transformers + FAISS search, TF-IDF fallback, RAG retriever
 │   ├── rag.py                 # LangChain + Gemini enrichment chain with on-disk cache
 │   ├── build_index.py         # One-time FAISS index builder
 │   ├── requirements.txt
@@ -152,7 +154,7 @@ AURA/
 
 - **Python 3.10+**
 - **Node.js 20.19+** (required by Vite 7)
-- A **Google Gemini API key** from [Google AI Studio](https://aistudio.google.com/app/apikey). This is optional for local development; see [Running without an API key](#running-without-an-api-key).
+- A **Google Gemini API key** from [Google AI Studio](https://aistudio.google.com/app/apikey) for AI-generated guidance. It is optional for local development; the local embedding model and FAISS retrieval do not use this key. See [Running without an API key](#running-without-an-api-key).
 
 ### 1. Clone the repository
 
@@ -172,9 +174,9 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 cp .env.example .env               # Windows: copy .env.example .env
-# Open .env and set GEMINI_API_KEY
+# Optional: set GEMINI_API_KEY to enable Gemini-generated guidance
 
-python build_index.py              # One-time: builds the FAISS index (needs the key)
+python build_index.py              # One-time: builds the local-embedding FAISS index (no Gemini key needed)
 
 uvicorn server:app --host 0.0.0.0 --port 5000 --reload
 ```
@@ -183,7 +185,7 @@ The API is now running at `http://127.0.0.1:5000`, with interactive docs at `htt
 
 > **Important:** run the backend commands from inside the `backend/` folder. The dataset and index paths are relative to it.
 >
-> `build_index.py` is optional but recommended. If the index doesn't exist, it is built automatically on the first `/predict` request, which makes that request slow.
+> `build_index.py` is optional but recommended. It uses the local Sentence Transformers model and does not require a Gemini API key. If the model needs to be downloaded, the first setup requires internet access. If the index doesn't exist, it is built automatically on the first `/predict` request, which makes that request slow.
 
 ### 3. Frontend
 
@@ -208,23 +210,24 @@ Vite prints the local URL, which is `http://localhost:5173` by default.
 
 If `GEMINI_API_KEY` is not set, AURA still runs:
 
-- Matching uses the cleaned **TF-IDF + cosine similarity** fallback.
-- Each prediction gets generic default guidance (general physician, moderate risk) instead of Gemini-generated advice.
+- Matching still uses the local Sentence Transformers model + FAISS, as long as the model and index can be loaded.
+- Gemini enrichment is skipped. Conditions without previously cached enrichment receive generic default guidance (general physician, moderate risk).
+- If local embedding/index initialization fails, the backend falls back to cleaned TF-IDF + cosine similarity.
 
-This is useful for local development and offline testing, but results are noticeably weaker than with embeddings and RAG enabled.
+This mode is useful for development without Gemini API usage. The first run may still need internet access to download the local embedding model; TF-IDF fallback is used if required embedding dependencies cannot be imported or local embedding initialization fails.
 
 ---
 
 ## Environment Variables
 
-**Backend** (`backend/.env`)
+### Backend (`backend/.env`)
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | Recommended | Google Gemini key, used for embeddings and RAG enrichment. `GOOGLE_API_KEY` is also accepted. |
+| `GEMINI_API_KEY` | Recommended for generated guidance | Google Gemini key used for RAG enrichment only; it is not used to create embeddings. `GOOGLE_API_KEY` is also accepted. |
 | `ALLOWED_ORIGINS` | No | Comma-separated CORS origins. Defaults to `*`. In production, set it to your frontend URL. |
 
-**Frontend** (`frontend/.env`)
+### Frontend (`frontend/.env`)
 
 | Variable | Required | Description |
 | --- | --- | --- |
@@ -289,7 +292,7 @@ Returns the **top 3** matching diseases with enrichment.
 | `specialist` | string | Suggested type of doctor |
 | `risk` | string | One of `Mild`, `Moderate`, `Severe` |
 
-**Status codes**
+### Status codes
 
 | Code | Meaning |
 | --- | --- |
@@ -298,7 +301,7 @@ Returns the **top 3** matching diseases with enrichment.
 | `422` | Invalid request body |
 | `429` | Rate limit exceeded (20 requests per 60 seconds per IP) |
 
-**Try it**
+### Try it
 
 ```bash
 curl -X POST http://127.0.0.1:5000/predict \
